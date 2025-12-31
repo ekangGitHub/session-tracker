@@ -57,8 +57,6 @@ function saveSessions(entries: SessionEntry[]): void {
 
 
 function App() {
-  const [count, setCount] = useState(0)
-
   const defaultPlannedFor = (t: SessionType) => (t === 'Green' ? 90 : t === 'Yellow' ? 45 : 15)
 
   const [sessions, setSessions] = useState<SessionEntry[]>([])
@@ -94,7 +92,7 @@ function App() {
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target as HTMLInputElement
+    const { name, value } = e.target as HTMLInputElement
     if (name === 'plannedMinutes' || name === 'actualMinutes' || name === 'tasksCompleted') {
       const num = value === '' ? NaN : Number(value)
       if (name === 'tasksCompleted') {
