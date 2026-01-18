@@ -1,18 +1,8 @@
-
-
-
 import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
-
-// Build a Session Tracker app.
-// Define types:
-// SessionType = 'Green' | 'Yellow' | 'Red'
-// EnergyAfter = 'Better' | 'Same' | 'Worse'
-// SessionEntry with fields:
-// id (string), date (YYYY-MM-DD string), sessionType, plannedMinutes (number),
-// actualMinutes (number), tasksCompleted (number | null), energyAfter, notes (string)
+import { supabase, fetchSessionsWithTasks, createSessionWithTasks, updateTaskCompleted } from './supabase'
 
 type SessionType = 'Green' | 'Yellow' | 'Red'
 type EnergyAfter = 'Better' | 'Same' | 'Worse'
@@ -29,29 +19,52 @@ interface SessionEntry {
 }
 
 // Create helper functions:
-// loadSessions(): SessionEntry[]  -> load from localStorage key "sessionTrackerEntries"
-// saveSessions(entries: SessionEntry[]): void -> save to localStorage
-// Must handle missing/invalid JSON safely (return empty array if bad)
+// loadSessions(): SessionEntry[]  -> load from Supabase
+// saveSessions(entries: SessionEntry[]): void -> save to Supabase
+// Must handle missing/invalid data safely (return empty array if bad)
 
-const STORAGE_KEY = 'sessionTrackerEntries'
-
-function loadSessions(): SessionEntry[] {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw) return []
+async function loadSessions(): Promise<SessionEntry[]> {
   try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed as SessionEntry[]
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return []
+
+    const sessionsWithTasks = await fetchSessionsWithTasks()
+    return sessionsWithTasks.map((s) => ({
+      id: s.id,
+      date: s.session_date,
+      sessionType: s.session_type,
+      plannedMinutes: s.planned_minutes,
+      actualMinutes: s.actual_minutes,
+      tasksCompleted: null,
+      energyAfter: s.energy_after,
+      notes: s.notes || '',
+    }))
   } catch (e) {
+    console.error('Failed to load sessions from Supabase', e)
     return []
   }
 }
 
-function saveSessions(entries: SessionEntry[]): void {
+async function saveSessions(entry: SessionEntry): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('Not authenticated')
+
+    await createSessionWithTasks(
+      {
+        session_date: entry.date,
+        session_type: entry.sessionType,
+        planned_minutes: entry.plannedMinutes,
+        actual_minutes: entry.actualMinutes,
+        energy_after: entry.energyAfter,
+        notes: entry.notes || null,
+        user_id: session.user.id,
+      },
+      []
+    )
   } catch (e) {
-    console.error('Failed to save sessions to localStorage', e)
+    console.error('Failed to save session to Supabase', e)
+    throw e
   }
 }
 
@@ -60,6 +73,8 @@ function App() {
   const defaultPlannedFor = (t: SessionType) => (t === 'Green' ? 90 : t === 'Yellow' ? 45 : 15)
 
   const [sessions, setSessions] = useState<SessionEntry[]>([])
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   const today = () => new Date().toISOString().slice(0, 10)
 
@@ -79,13 +94,40 @@ function App() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const loaded = loadSessions()
-    setSessions(loaded)
-  }, [])
+    // Check auth status and load sessions
+    const initializeApp = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        setIsAuthenticated(!!session)
+        if (session) {
+          const loaded = await loadSessions()
+          setSessions(loaded)
+        }
+      } catch (e) {
+        console.error('Failed to initialize app', e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-  useEffect(() => {
-    saveSessions(sessions)
-  }, [sessions])
+    initializeApp()
+
+    // Subscribe to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session)
+      if (session) {
+        const reload = async () => {
+          const loaded = await loadSessions()
+          setSessions(loaded)
+        }
+        reload()
+      } else {
+        setSessions([])
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   const setField = (k: keyof SessionEntry, v: any) => {
     setForm((prev) => ({ ...prev, [k]: v }))
@@ -112,28 +154,31 @@ function App() {
 
   const handleEnergyChange = (value: EnergyAfter) => setField('energyAfter', value)
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setError(null)
     if (!form.sessionType) return setError('Session type is required')
     if (!form.energyAfter) return setError('Energy after is required')
     if (form.actualMinutes === null || form.actualMinutes === undefined || isNaN(form.actualMinutes))
       return setError('Actual minutes is required')
 
-    const id = (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
-      ? (crypto as any).randomUUID()
-      : String(Date.now())
-
-    const entry: SessionEntry = { ...form, id }
-
-    const next = [entry, ...sessions]
-    setSessions(next)
-    saveSessions(next)
-    setForm({ ...initialForm, date: today() })
+    try {
+      await saveSessions(form)
+      const loaded = await loadSessions()
+      setSessions(loaded)
+      setForm({ ...initialForm, date: today() })
+    } catch (e) {
+      setError((e as Error).message || 'Failed to save session')
+    }
   }
 
-  const handleDelete = (id: string) => {
-    const next = sessions.filter((s) => s.id !== id)
-    setSessions(next)
+  const handleDelete = async (id: string) => {
+    try {
+      await supabase.from('sessions').delete().eq('id', id)
+      const loaded = await loadSessions()
+      setSessions(loaded)
+    } catch (e) {
+      console.error('Failed to delete session', e)
+    }
   }
 
   return (
@@ -148,119 +193,127 @@ function App() {
       </div>
       <h1>Session Tracker</h1>
 
-      <section className="card">
-        <h2>New Session</h2>
-        {error && <div style={{ color: 'red' }}>{error}</div>}
+      {isLoading ? (
+        <p>Loading...</p>
+      ) : !isAuthenticated ? (
+        <p>Please sign in to use the Session Tracker.</p>
+      ) : (
+        <>
+          <section className="card">
+            <h2>New Session</h2>
+            {error && <div style={{ color: 'red' }}>{error}</div>}
 
-        <div>
-          <label>
-            Date
-            <input type="date" name="date" value={form.date} onChange={handleInputChange} />
-          </label>
-        </div>
+            <div>
+              <label>
+                Date
+                <input type="date" name="date" value={form.date} onChange={handleInputChange} />
+              </label>
+            </div>
 
-        <fieldset>
-          <legend>Session Type</legend>
-          <label>
-            <input type="radio" name="sessionType" checked={form.sessionType === 'Green'} onChange={() => handleSessionTypeChange('Green')} />
-            Green
-          </label>
-          <label>
-            <input type="radio" name="sessionType" checked={form.sessionType === 'Yellow'} onChange={() => handleSessionTypeChange('Yellow')} />
-            Yellow
-          </label>
-          <label>
-            <input type="radio" name="sessionType" checked={form.sessionType === 'Red'} onChange={() => handleSessionTypeChange('Red')} />
-            Red
-          </label>
-        </fieldset>
+            <fieldset>
+              <legend>Session Type</legend>
+              <label>
+                <input type="radio" name="sessionType" checked={form.sessionType === 'Green'} onChange={() => handleSessionTypeChange('Green')} />
+                Green
+              </label>
+              <label>
+                <input type="radio" name="sessionType" checked={form.sessionType === 'Yellow'} onChange={() => handleSessionTypeChange('Yellow')} />
+                Yellow
+              </label>
+              <label>
+                <input type="radio" name="sessionType" checked={form.sessionType === 'Red'} onChange={() => handleSessionTypeChange('Red')} />
+                Red
+              </label>
+            </fieldset>
 
-        <div>
-          <label>
-            Planned Minutes
-            <input type="number" name="plannedMinutes" value={String(form.plannedMinutes)} onChange={handleInputChange} />
-          </label>
-        </div>
+            <div>
+              <label>
+                Planned Minutes
+                <input type="number" name="plannedMinutes" value={String(form.plannedMinutes)} onChange={handleInputChange} />
+              </label>
+            </div>
 
-        <div>
-          <label>
-            Actual Minutes*
-            <input type="number" name="actualMinutes" value={String(form.actualMinutes)} onChange={handleInputChange} />
-          </label>
-        </div>
+            <div>
+              <label>
+                Actual Minutes*
+                <input type="number" name="actualMinutes" value={String(form.actualMinutes)} onChange={handleInputChange} />
+              </label>
+            </div>
 
-        <div>
-          <label>
-            Tasks Completed (optional)
-            <input type="number" name="tasksCompleted" value={form.tasksCompleted === null ? '' : String(form.tasksCompleted)} onChange={handleInputChange} />
-          </label>
-        </div>
+            <div>
+              <label>
+                Tasks Completed (optional)
+                <input type="number" name="tasksCompleted" value={form.tasksCompleted === null ? '' : String(form.tasksCompleted)} onChange={handleInputChange} />
+              </label>
+            </div>
 
-        <fieldset>
-          <legend>Energy After*</legend>
-          <label>
-            <input type="radio" name="energyAfter" checked={form.energyAfter === 'Better'} onChange={() => handleEnergyChange('Better')} />
-            Better
-          </label>
-          <label>
-            <input type="radio" name="energyAfter" checked={form.energyAfter === 'Same'} onChange={() => handleEnergyChange('Same')} />
-            Same
-          </label>
-          <label>
-            <input type="radio" name="energyAfter" checked={form.energyAfter === 'Worse'} onChange={() => handleEnergyChange('Worse')} />
-            Worse
-          </label>
-        </fieldset>
+            <fieldset>
+              <legend>Energy After*</legend>
+              <label>
+                <input type="radio" name="energyAfter" checked={form.energyAfter === 'Better'} onChange={() => handleEnergyChange('Better')} />
+                Better
+              </label>
+              <label>
+                <input type="radio" name="energyAfter" checked={form.energyAfter === 'Same'} onChange={() => handleEnergyChange('Same')} />
+                Same
+              </label>
+              <label>
+                <input type="radio" name="energyAfter" checked={form.energyAfter === 'Worse'} onChange={() => handleEnergyChange('Worse')} />
+                Worse
+              </label>
+            </fieldset>
 
-        <div>
-          <label>
-            Notes
-            <textarea name="notes" value={form.notes} onChange={handleInputChange} />
-          </label>
-        </div>
+            <div>
+              <label>
+                Notes
+                <textarea name="notes" value={form.notes} onChange={handleInputChange} />
+              </label>
+            </div>
 
-        <div>
-          <button onClick={handleSave}>Save</button>
-        </div>
-      </section>
+            <div>
+              <button onClick={handleSave}>Save</button>
+            </div>
+          </section>
 
-      <section>
-        <h2>Entries ({sessions.length})</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left' }}>Date</th>
-              <th style={{ textAlign: 'left' }}>Type</th>
-              <th style={{ textAlign: 'right' }}>Planned</th>
-              <th style={{ textAlign: 'right' }}>Actual</th>
-              <th style={{ textAlign: 'right' }}>Tasks</th>
-              <th style={{ textAlign: 'left' }}>Energy</th>
-              <th style={{ textAlign: 'left' }}>Notes</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {[...sessions]
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .map((s) => (
-                <tr key={s.id} style={{ borderTop: '1px solid #eee' }}>
-                  <td>{s.date}</td>
-                  <td>{s.sessionType}</td>
-                  <td style={{ textAlign: 'right' }}>{s.plannedMinutes}</td>
-                  <td style={{ textAlign: 'right' }}>{s.actualMinutes}</td>
-                  <td style={{ textAlign: 'right' }}>{s.tasksCompleted ?? '-'}</td>
-                  <td>{s.energyAfter}</td>
-                  <td>{s.notes || '-'}</td>
-                  <td>
-                    <button onClick={() => handleDelete(s.id)} style={{ color: 'red' }}>
-                      Delete
-                    </button>
-                  </td>
+          <section>
+            <h2>Entries ({sessions.length})</h2>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>Date</th>
+                  <th style={{ textAlign: 'left' }}>Type</th>
+                  <th style={{ textAlign: 'right' }}>Planned</th>
+                  <th style={{ textAlign: 'right' }}>Actual</th>
+                  <th style={{ textAlign: 'right' }}>Tasks</th>
+                  <th style={{ textAlign: 'left' }}>Energy</th>
+                  <th style={{ textAlign: 'left' }}>Notes</th>
+                  <th />
                 </tr>
-              ))}
-          </tbody>
-        </table>
-      </section>
+              </thead>
+              <tbody>
+                {[...sessions]
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((s) => (
+                    <tr key={s.id} style={{ borderTop: '1px solid #eee' }}>
+                      <td>{s.date}</td>
+                      <td>{s.sessionType}</td>
+                      <td style={{ textAlign: 'right' }}>{s.plannedMinutes}</td>
+                      <td style={{ textAlign: 'right' }}>{s.actualMinutes}</td>
+                      <td style={{ textAlign: 'right' }}>{s.tasksCompleted ?? '-'}</td>
+                      <td>{s.energyAfter}</td>
+                      <td>{s.notes || '-'}</td>
+                      <td>
+                        <button onClick={() => handleDelete(s.id)} style={{ color: 'red' }}>
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
     </>
   )
 }
