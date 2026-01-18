@@ -38,22 +38,28 @@ export function Auth({ children }: AuthProps) {
   }, []);
 
   const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    setMessage('');
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    setMessage('')
 
-    const { error: signInError } = await supabase.auth.signInWithOtp({ email });
+    // Redirect to the correct base (works for local + GitHub Pages)
+    const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`
+
+    const { error: signInError } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectTo },
+    })
 
     if (signInError) {
-      setError(signInError.message);
+      setError(signInError.message)
+      setLoading(false)
     } else {
-      setMessage('Check your email for the magic link!');
-      setEmail('');
+      setMessage('Signing in...')
+      setEmail('')
+      setTimeout(() => setLoading(false), 1000)
     }
-
-    setLoading(false);
-  };
+  }
 
   const handleSignOut = async () => {
     setLoading(true);
