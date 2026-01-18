@@ -113,7 +113,7 @@ function App() {
     initializeApp()
 
     // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
       setIsAuthenticated(!!session)
       if (session) {
         const reload = async () => {
@@ -126,7 +126,7 @@ function App() {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => subscription?.unsubscribe()
   }, [])
 
   const setField = (k: keyof SessionEntry, v: any) => {
