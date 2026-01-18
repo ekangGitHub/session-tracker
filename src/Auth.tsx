@@ -7,85 +7,66 @@ interface AuthProps {
 }
 
 export function Auth({ children }: AuthProps) {
-  const [email, setEmail] = useState('');
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       setSession(session);
+      setLoading(false);
     }).catch((err: any) => {
       console.error('Failed to get session:', err);
       setError(`Auth error: ${err.message}`);
+      setLoading(false);
     });
 
-    // Subscribe to auth state changes
-    try {
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
-        setSession(session);
-      });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+      setSession(session);
+      setLoading(false);
+    });
 
-      return () => subscription?.unsubscribe();
-    } catch (err: any) {
-      console.error('Failed to subscribe to auth changes:', err);
-      return () => {};
-    }
+    return () => subscription?.unsubscribe();
   }, []);
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    setMessage('')
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError('');
 
-    // Redirect to the correct base (works for local + GitHub Pages)
-    const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`
+    const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
 
-    const { error: signInError } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: redirectTo },
-    })
+    const { error: signInError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo,
+      },
+    });
 
     if (signInError) {
-      setError(signInError.message)
-      setLoading(false)
-    } else {
-      setMessage('Signing in...')
-      setEmail('')
-      setTimeout(() => setLoading(false), 1000)
+      setError(signInError.message);
+      setLoading(false);
     }
-  }
+  };
 
   const handleSignOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
+    setSession(null);
     setLoading(false);
   };
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
 
   if (!session) {
     return (
       <div>
         <h1>Sign In</h1>
-        <form onSubmit={handleSignIn}>
-          <input
-            type="email"
-            placeholder="Enter your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={loading}
-          />
-          <button type="submit" disabled={loading}>
-            {loading ? 'Sending...' : 'Send Magic Link'}
-          </button>
-        </form>
-        {message && <p>{message}</p>}
         {error && <p style={{ color: 'red' }}>{error}</p>}
+        <button onClick={handleGoogleSignIn} disabled={loading}>
+          Sign in with Google
+        </button>
       </div>
     );
   }
