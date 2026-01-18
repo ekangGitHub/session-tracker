@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
-import { supabase, fetchSessionsWithTasks, createSessionWithTasks, updateTaskCompleted } from './supabase'
+import { supabase, fetchSessionsWithTasks, createSessionWithTasks } from './supabase'
 
 type SessionType = 'Green' | 'Yellow' | 'Red'
 type EnergyAfter = 'Better' | 'Same' | 'Worse'
