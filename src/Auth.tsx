@@ -15,9 +15,9 @@ export function Auth({ children }: AuthProps) {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
       setSession(session);
-    }).catch((err) => {
+    }).catch((err: any) => {
       console.error('Failed to get session:', err);
       setError(`Auth error: ${err.message}`);
     });
@@ -26,12 +26,12 @@ export function Auth({ children }: AuthProps) {
     try {
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
+      } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
         setSession(session);
       });
 
-      return () => subscription.unsubscribe();
-    } catch (err) {
+      return () => subscription?.unsubscribe();
+    } catch (err: any) {
       console.error('Failed to subscribe to auth changes:', err);
       return () => {};
     }
