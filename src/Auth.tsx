@@ -12,16 +12,17 @@ export function Auth({ children }: AuthProps) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       console.error('Failed to get session:', err);
-      setError(`Auth error: ${err.message}`);
+      const message = err instanceof Error ? err.message : 'Unknown authentication error';
+      setError(`Auth error: ${message}`);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setLoading(false);
     });

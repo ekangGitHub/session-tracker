@@ -1,73 +1,104 @@
-# React + TypeScript + Vite
+# Session Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React and Supabase application for recording work sessions. Mentors invite
+mentees in the app and assign one accepted mentee to each session. Mentors own
+and edit their session records; the assigned mentee has read-only access.
 
-Currently, two official plugins are available:
+Mentees can also create self-study sessions and select exactly one paired mentor
+for each record. The mentee owns and manages the record, and the selected mentor
+may view, edit, or delete it.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Local development
 
-## React Compiler
+Create a `.env.local` file containing:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```dotenv
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Then run:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```sh
+npm install
+npm run dev
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Database setup
+
+Apply the SQL files in `supabase/migrations` to the Supabase project. With the
+Supabase CLI linked to the project, run:
+
+```sh
+supabase db push
+```
+
+The migration:
+
+- Creates pending in-app invitations.
+- Creates many-to-many mentor/mentee relationships after acceptance.
+- Adds a nullable `mentee_id` to existing sessions without deleting data.
+- Adds a `session_origin` value (`mentor` or `self_study`); existing rows default
+  to `mentor`.
+- Adds `mentor_id`. Mentor-led rows use their creator; each self-study row uses
+  the mentor selected by the mentee.
+- Adds Row Level Security policies for mentor-owned, mentee-readable sessions.
+
+It assumes the existing `sessions` and `session_tasks` tables have the columns
+represented in `src/types.ts`.
+
+## Invitation flow
+
+1. The mentor signs in and enters the mentee's sign-in email.
+2. The mentee signs in with that exact email.
+3. The mentee accepts or declines the pending invitation.
+4. Acceptance creates the relationship.
+5. The mentor selects that mentee when creating or editing a session.
+
+Invitations are in-app only. No email is sent.
+
+## Preserve and assign existing sessions
+
+The migration keeps all existing session rows and adds `mentee_id` as `null`.
+After the first mentee accepts the invitation, find the mentor and mentee UUIDs
+under **Authentication → Users** in the Supabase dashboard.
+
+First preview the rows that will be assigned:
+
+```sql
+select id, session_date, notes
+from public.sessions
+where user_id = '<mentor-user-id>'
+  and mentee_id is null;
+```
+
+If all returned rows belong to the first mentee, assign them:
+
+```sql
+update public.sessions
+set mentee_id = '<first-mentee-user-id>'
+where user_id = '<mentor-user-id>'
+  and mentee_id is null;
+```
+
+This updates only the new relationship column. Session IDs and all existing
+session data remain unchanged.
+
+If self-study sessions were created before `mentor_id` was introduced, assign
+one paired mentor to each:
+
+```sql
+update public.sessions
+set mentor_id = '<selected-mentor-user-id>'
+where id = '<self-study-session-id>'
+  and session_origin = 'self_study'
+  and mentor_id is null;
+```
+
+To remove a pairing administratively:
+
+```sql
+delete from public.mentorships
+where mentor_id = '<mentor-user-id>'
+  and mentee_id = '<mentee-user-id>';
 ```

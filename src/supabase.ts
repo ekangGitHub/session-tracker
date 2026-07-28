@@ -1,5 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
-import type { SessionWithTasks, SessionRow, TaskRow } from './types';
+import type {
+  MentorshipInvitationRow,
+  MentorshipRow,
+  SessionWithTasks,
+  SessionRow,
+  TaskRow,
+} from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -112,6 +118,94 @@ export async function createSessionWithTasks(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     throw new Error(`createSessionWithTasks failed: ${message}`);
+  }
+}
+
+export async function updateSession(
+  sessionId: string,
+  changes: Pick<
+    SessionRow,
+    | 'session_date'
+    | 'session_type'
+    | 'planned_minutes'
+    | 'actual_minutes'
+    | 'energy_after'
+    | 'notes'
+    | 'mentee_id'
+    | 'mentor_id'
+    | 'session_origin'
+  >
+): Promise<SessionRow> {
+  const { data, error } = await supabase
+    .from('sessions')
+    .update(changes)
+    .eq('id', sessionId)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update session: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error('Session update returned no data');
+  }
+
+  return data as SessionRow;
+}
+
+export async function fetchMentorships(): Promise<MentorshipRow[]> {
+  const { data, error } = await supabase
+    .from('mentorships')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch mentorships: ${error.message}`);
+  }
+
+  return (data as MentorshipRow[]) || [];
+}
+
+export async function fetchMentorshipInvitations(): Promise<MentorshipInvitationRow[]> {
+  const { data, error } = await supabase
+    .from('mentorship_invitations')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to fetch invitations: ${error.message}`);
+  }
+
+  return (data as MentorshipInvitationRow[]) || [];
+}
+
+export async function sendMentorshipInvitation(
+  mentorId: string,
+  menteeEmail: string
+): Promise<void> {
+  const normalizedEmail = menteeEmail.trim().toLowerCase();
+  const { error } = await supabase.from('mentorship_invitations').insert({
+    mentor_id: mentorId,
+    mentee_email: normalizedEmail,
+  });
+
+  if (error) {
+    throw new Error(`Failed to send invitation: ${error.message}`);
+  }
+}
+
+export async function respondToMentorshipInvitation(
+  invitationId: string,
+  accept: boolean
+): Promise<void> {
+  const { error } = await supabase.rpc('respond_to_mentorship_invitation', {
+    invitation_id: invitationId,
+    accept_invitation: accept,
+  });
+
+  if (error) {
+    throw new Error(`Failed to respond to invitation: ${error.message}`);
   }
 }
 
