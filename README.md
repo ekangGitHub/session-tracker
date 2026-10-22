@@ -10,6 +10,9 @@ may view, edit, or delete it.
 
 ## Local development
 
+Steven's current tasks and acceptance criteria are in
+[STEVEN_REQUIREMENTS.md](STEVEN_REQUIREMENTS.md).
+
 Create a `.env.local` file containing:
 
 ```dotenv

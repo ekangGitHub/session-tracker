@@ -185,6 +185,8 @@ Status: Not addressed.
 
 #### TODO: Display mentor and mentee names
 
+Assigned to: Steven. See [the consolidated requirements](STEVEN_REQUIREMENTS.md).
+
 - Add a protected `profiles` table keyed by `auth.users.id`.
 - Store `first_name` and `last_name` separately.
 - Create a profile automatically when a user first signs in, or require profile
@@ -232,9 +234,27 @@ Recommended change:
 
 Status: Not addressed.
 
+#### TODO: Remove the image from the Session Tracker page
+
+Assigned to: Steven
+
+- Remove the current header images/logos from the Session Tracker page (the
+  React and Vite starter logos currently rendered in `src/App.tsx`).
+- Remove their associated links, unused imports, and any styling or animation
+  used only by those images.
+- Adjust the spacing so the page title and content remain neatly aligned on
+  desktop and mobile.
+
+Acceptance criteria: The images no longer appear, the page has no empty image
+space or broken image placeholders, and the application builds successfully.
+
+Status: Planned for later.
+
 ### 9a. Move mentor connections to a separate page
 
 Priority: Medium
+
+Assigned to: Steven. See [the consolidated requirements](STEVEN_REQUIREMENTS.md).
 
 The invitation form, connection lists, session form, and complete session
 history currently share one page. This will become difficult to navigate when a
@@ -319,22 +339,46 @@ Recommended minimum coverage:
 
 Status: Not addressed.
 
-### 11. Deployment configuration is repository-specific
+### 11. Deploy Session Tracker to Vercel or Render
 
-Priority: Low
+Priority: Medium
+
+Assigned to: Steven
 
 Vite's base path is fixed to `/session-tracker/`, which is appropriate for the
 current GitHub Pages-style location but makes deployment elsewhere less
 portable.
 
-Recommended change:
+Requirements:
 
+- Deploy the application to either Vercel or Render and provide the live URL.
+- Connect the repository and configure automatic deployments from the agreed
+  production branch.
+- Build with `npm run build` and publish the generated `dist` directory.
 - Configure the base path from an environment variable, or use `/` when
   deploying at a domain root.
-- Document the required Supabase OAuth redirect URLs for development and
-  production.
+- Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the hosting
+  environment. Never expose a Supabase service-role key in the frontend.
+- Configure Supabase's site URL and allowed OAuth redirect URLs for the deployed
+  application, retaining the development URLs that are still needed.
+- Ensure direct navigation and refresh work for the new Connections and Sessions
+  routes, including relationship-filter query parameters.
+- Verify Google sign-in, sign-out, invitations, profile display, and session
+  creation, editing, and viewing on the deployed site with mentor and mentee
+  accounts. Confirm existing access controls still apply.
+- Document the chosen host, deployment settings, environment variable names,
+  authentication URL configuration, and redeployment/rollback steps in README.md.
 
-Status: Not addressed.
+Acceptance criteria:
+
+- The application is accessible over HTTPS at the supplied live URL.
+- Authentication returns users to the deployed application successfully.
+- Connections and Sessions work after direct navigation and page refresh.
+- The production build succeeds and the deployed mentor/mentee workflows pass
+  the checks above.
+- Deployment instructions allow another maintainer to redeploy the application.
+
+Status: Planned for later.
 
 ### 12. Dependency health should be reviewed
 
