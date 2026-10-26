@@ -6,12 +6,19 @@ Status: Planned
 Implement the following four tasks. Preserve existing session data and the
 mentor, mentee, and dual-role workflows.
 
-## 1. Build PostgreSQL user profiles and display names
+## 1. Build a Java profile API with PostgreSQL and display names
 
-Priority: Start here. The main learning objective is hands-on PostgreSQL
-experience through Supabase: relational schema design, SQL migrations,
-queries, and row-level security. Complete the database work before integrating
-profile names into the UI.
+Priority: Start here. The learning objectives are hands-on Java and PostgreSQL
+experience: Spring Boot, REST APIs, relational schema design, SQL migrations,
+queries, authentication, and row-level security. Complete the database and API
+work before integrating profile names into the UI.
+
+Architecture: React/TypeScript frontend → Java/Spring Boot profile API → existing
+Supabase PostgreSQL database. Keep Supabase Auth for Google sign-in and the
+existing session/invitation flows. Page separation and image removal remain
+React/TypeScript work.
+
+### PostgreSQL schema and permissions
 
 - Add a version-controlled migration for a protected `profiles` table keyed by
   `auth.users.id`, with separate `first_name` and `last_name` fields.
@@ -37,8 +44,41 @@ profile names into the UI.
   to retrieve mentor/mentee names. Explain the schema, constraints, migration,
   and RLS policies in the pull request, with validation results.
 
-Acceptance: Name edits appear throughout the app; legacy accounts retain useful
-labels; users cannot edit another person's profile or read unrelated profiles.
+### Java/Spring Boot API
+
+- Add the Java service in a `backend/` directory with a reproducible Maven or
+  Gradle build and documented Java version.
+- Implement authenticated endpoints such as `GET /api/profiles/me`,
+  `PUT /api/profiles/me`, and `GET /api/profiles/{userId}`. Document request and
+  response fields and profile initialization behavior.
+- Implement profile persistence against the existing PostgreSQL database using
+  Spring Data JPA or JDBC. Keep the version-controlled SQL migrations as the
+  source of schema changes rather than relying on automatic ORM schema updates.
+- Validate Supabase access tokens using Spring Security, checking signature,
+  issuer, expiry, and the intended audience. Derive the acting user's ID from the
+  validated token rather than a client-supplied user ID.
+- Restrict updates to the acting user's profile. Allow reads only for that user
+  and authorized connections; return only the profile fields needed for display.
+- Define input limits and validation for names and return consistent JSON errors
+  for invalid input, missing/invalid authentication, and denied access.
+- Document the database role and how authenticated user identity reaches RLS
+  for each database transaction. A server connection must not silently bypass
+  RLS; establish transaction-local user context with a restricted database role
+  and verify it with integration tests. Never expose database credentials or
+  privileged Supabase keys to the browser.
+- Configure CORS for the actual development and production frontend origins.
+- Connect the React profile UI and name lookups to this API, sending the current
+  Supabase access token. Handle loading, expired sessions, and API failures.
+- Add Java API/database integration tests for persistence, validation, token
+  rejection, own-profile updates, connected-profile reads, denied unrelated
+  access, and denied updates to another user's profile. Verify both API
+  authorization and database policies using a test PostgreSQL environment.
+- Document local backend setup, environment variable names, migration steps,
+  endpoint examples, and the command to run the Java test suite.
+
+Acceptance: The React UI reads and updates profiles through the Java API; changes
+persist in PostgreSQL and appear throughout the app; legacy accounts retain
+useful labels; API and SQL permission checks reject unauthorized access.
 
 ## 2. Separate Connections and Sessions
 
@@ -72,13 +112,20 @@ remain; the application builds successfully.
 
 ## 4. Deploy to Vercel or Render
 
-- Deploy to either host and provide the live HTTPS URL.
+- Deploy the React frontend to Vercel or Render, and deploy the Java/Spring Boot
+  API to a Java-capable service such as a Render web service. Provide both live
+  HTTPS URLs and document the chosen arrangement.
 - Connect the GitHub repository and configure automatic deployment from the
   agreed production branch.
 - Use `npm run build` and publish `dist`.
 - Update the current `/session-tracker/` Vite base path for the deployment URL.
 - Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the hosting
   environment. Keep Supabase service-role credentials out of the frontend.
+- Configure the frontend API base URL and the backend's database connection,
+  authentication validation, and allowed frontend origins. Store backend secrets
+  only in the backend hosting environment.
+- Document the backend build/start commands, required Java version, health check,
+  and any hosting limitations that affect availability.
 - Configure the Supabase site URL and OAuth redirect allowlist for production,
   retaining required development URLs.
 - Ensure direct navigation and refresh work on Connections and Sessions,
@@ -88,8 +135,9 @@ remain; the application builds successfully.
 - Document hosting settings, environment variable names, authentication URLs,
   redeployment, and rollback in README.md.
 
-Acceptance: The live app loads over HTTPS; sign-in returns to the correct site;
-routes survive refresh; mentor/mentee workflows and access controls work.
+Acceptance: The live frontend and Java API work together over HTTPS; sign-in
+returns to the correct site; routes survive refresh; profile updates persist;
+mentor/mentee workflows and access controls work.
 
 ## Existing permissions to preserve
 
@@ -109,9 +157,12 @@ routes survive refresh; mentor/mentee workflows and access controls work.
   and any database migration or hosting setup steps in each pull request.
 - Include SQL migrations in the repository and document their application order.
 - Run `npm run build` and `npm run lint`; report any remaining failures.
+- Run the Java build and integration test suite and include results in the
+  profile API pull request.
 - Verify with mentor, mentee, dual-role, and unrelated test accounts. Include
   checks that unauthorized profile/session reads and writes are rejected.
-- Deliver the live deployment URL and updated setup/deployment documentation.
+- Deliver frontend and API deployment URLs and updated setup/deployment
+  documentation.
 
 The wider project review is in [CODE_ANALYSIS_AND_RECOMMENDATIONS.md](CODE_ANALYSIS_AND_RECOMMENDATIONS.md).
 This document defines Steven's current scope; the other review recommendations
